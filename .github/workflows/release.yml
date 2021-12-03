@@ -1,7 +1,6 @@
 name: Release
 on:
- schedule:
-  - cron: '0 15 * * *' # midnight UTC
+ workflow_dispatch:
 
 jobs:
   dist:
