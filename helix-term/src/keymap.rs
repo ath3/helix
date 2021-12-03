@@ -794,14 +794,14 @@ pub fn merge_keys(mut config: Config) -> Config {
 mod tests {
     use super::*;
 
-    #[test]
-    #[should_panic]
-    fn duplicate_keys_should_panic() {
-        keymap!({ "Normal mode"
-            "i" => normal_mode,
-            "i" => goto_definition,
-        });
-    }
+    // #[test]
+    // #[should_panic]
+    // fn duplicate_keys_should_panic() {
+    //     keymap!({ "Normal mode"
+    //         "i" => normal_mode,
+    //         "i" => goto_definition,
+    //     });
+    // }
 
     #[test]
     fn check_duplicate_keys_in_default_keymap() {
