@@ -1989,8 +1989,10 @@ mod cmd {
         args: &[&str],
         _event: PromptEvent,
     ) -> anyhow::Result<()> {
-        let path = args.get(0).context("wrong argument count")?;
-        let _ = cx.editor.open(path.into(), Action::Replace)?;
+        ensure!(!args.is_empty(), "wrong argument count");
+        for arg in args {
+            let _ = cx.editor.open(arg.into(), Action::Replace)?;
+        }
         Ok(())
     }
 
@@ -2980,7 +2982,38 @@ fn command_mode(cx: &mut Context) {
 
             // Handle typable commands
             if let Some(cmd) = cmd::TYPABLE_COMMAND_MAP.get(parts[0]) {
-                if let Err(e) = (cmd.fun)(cx, &parts[1..], event) {
+                let mut args: Vec<&str> = Vec::new();
+                let quote_pos: Vec<usize> = input
+                    .char_indices()
+                    .filter(|&(_idx, char)| char == '"')
+                    .map(|(idx, _char)| idx)
+                    .collect();
+
+                if quote_pos.len() < 2 {
+                    args = parts;
+                } else {
+                    args.append(
+                        &mut input[0..quote_pos[0]]
+                            .split_whitespace()
+                            .collect::<Vec<&str>>(),
+                    );
+                    for i in 0..quote_pos.len() / 2 {
+                        args.push(input[quote_pos[i * 2] + 1..quote_pos[i * 2 + 1]].trim());
+                        if i * 2 + 2 < quote_pos.len() - 1 {
+                            args.append(
+                                &mut input[quote_pos[i * 2 + 1] + 1..quote_pos[i * 2 + 2]]
+                                    .split_whitespace()
+                                    .collect::<Vec<&str>>(),
+                            );
+                        }
+                    }
+                    args.append(
+                        &mut input[quote_pos[quote_pos.len() - 1] + 1..]
+                            .split_whitespace()
+                            .collect::<Vec<&str>>(),
+                    );
+                }
+                if let Err(e) = (cmd.fun)(cx, &args[1..], event) {
                     cx.editor.set_error(format!("{}", e));
                 }
             } else {
