@@ -26,7 +26,7 @@ use helix_core::{
     syntax::LanguageServerFeature,
     text_annotations::TextAnnotations,
     textobject,
-    tree_sitter::Node,
+    tree_sitter::{Node, Tree},
     unicode::width::UnicodeWidthChar,
     visual_offset_from_block, Deletion, LineEnding, Position, Range, Rope, RopeGraphemes,
     RopeSlice, Selection, SmallVec, Tendril, Transaction,
@@ -414,6 +414,7 @@ impl MappableCommand {
         select_prev_sibling, "Select previous sibling the in syntax tree",
         select_all_siblings, "Select all siblings of the current node",
         select_all_children, "Select all children of the current node",
+        select_all_children_in_selection, "Select all children of the current node that are contained in the current selection",
         jump_forward, "Jump forward on jumplist",
         jump_backward, "Jump backward on jumplist",
         save_selection, "Save current selection to jumplist",
@@ -4642,17 +4643,40 @@ fn select_prev_sibling(cx: &mut Context) {
     select_sibling_impl(cx, &|node| Node::prev_sibling(&node))
 }
 
+fn select_all_impl<F>(editor: &mut Editor, select_fn: F)
+where
+    F: Fn(&Tree, RopeSlice, Selection) -> Selection,
+{
+    let (view, doc) = current!(editor);
+
+    if let Some(syntax) = doc.syntax() {
+        let text = doc.text().slice(..);
+        let current_selection = doc.selection(view.id);
+        let selection = select_fn(syntax.tree(), text, current_selection.clone());
+        doc.set_selection(view.id, selection);
+    }
+}
+
 fn select_all_siblings(cx: &mut Context) {
     let motion = |editor: &mut Editor| {
-        let (view, doc) = current!(editor);
+        select_all_impl(editor, object::select_all_siblings);
+    };
 
-        if let Some(syntax) = doc.syntax() {
-            let text = doc.text().slice(..);
-            let current_selection = doc.selection(view.id);
-            let selection =
-                object::select_all_siblings(syntax.tree(), text, current_selection.clone());
-            doc.set_selection(view.id, selection);
-        }
+    motion(cx.editor);
+    cx.editor.last_motion = Some(Motion(Box::new(motion)));
+}
+
+fn select_all_children_in_selection(cx: &mut Context) {
+    let motion = |editor: &mut Editor| {
+        select_all_impl(editor, |tree, text, selection| {
+            let all_children = object::select_all_children(tree, text, selection.clone());
+
+            if selection.contains(&all_children) {
+                all_children
+            } else {
+                selection
+            }
+        });
     };
 
     motion(cx.editor);
@@ -4661,15 +4685,7 @@ fn select_all_siblings(cx: &mut Context) {
 
 fn select_all_children(cx: &mut Context) {
     let motion = |editor: &mut Editor| {
-        let (view, doc) = current!(editor);
-
-        if let Some(syntax) = doc.syntax() {
-            let text = doc.text().slice(..);
-            let current_selection = doc.selection(view.id);
-            let selection =
-                object::select_all_children(syntax.tree(), text, current_selection.clone());
-            doc.set_selection(view.id, selection);
-        }
+        select_all_impl(editor, object::select_all_children);
     };
 
     motion(cx.editor);
