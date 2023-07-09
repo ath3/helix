@@ -33,8 +33,8 @@ use crate::{
     compositor::{self, Compositor},
     job::Callback,
     ui::{
-        self, lsp::SignatureHelp, overlay::overlaid, DynamicPicker, FileLocation, FilePicker,
-        Popup, PromptEvent,
+        self, lsp::SignatureHelp, overlay::overlaid, DynamicPicker, FileLocation, Picker, Popup,
+        PromptEvent,
     },
 };
 
@@ -299,7 +299,7 @@ fn jump_to_location(
     align_view(doc, view, Align::Center);
 }
 
-type SymbolPicker = FilePicker<SymbolInformationItem>;
+type SymbolPicker = Picker<SymbolInformationItem>;
 
 fn sym_picker(
     symbols: Vec<SymbolInformationItem>,
@@ -307,7 +307,7 @@ fn sym_picker(
     editor: &Editor,
 ) -> SymbolPicker {
     // TODO: drop current_path comparison and instead use workspace: bool flag?
-    FilePicker::new(
+    Picker::new(
         symbols,
         current_path.clone(),
         editor.config().icons.picker.then_some(&editor.icons),
@@ -344,8 +344,8 @@ fn sym_picker(
                 align_view(doc, view, Align::Center);
             }
         },
-        move |_editor, item| Some(location_to_file_location(&item.symbol.location)),
     )
+    .with_preview(move |_editor, item| Some(location_to_file_location(&item.symbol.location)))
     .truncate_start(false)
 }
 
@@ -360,7 +360,7 @@ fn diag_picker(
     diagnostics: BTreeMap<lsp::Url, Vec<(lsp::Diagnostic, usize)>>,
     current_path: Option<lsp::Url>,
     format: DiagnosticsFormat,
-) -> FilePicker<PickerDiagnostic> {
+) -> Picker<PickerDiagnostic> {
     // TODO: drop current_path comparison and instead use workspace: bool flag?
 
     // flatten the map to a vec of (url, diag) pairs
@@ -386,7 +386,7 @@ fn diag_picker(
         error: cx.editor.theme.get("error"),
     };
 
-    FilePicker::new(
+    Picker::new(
         flat_diag,
         (styles, format),
         cx.editor.config().icons.picker.then_some(&cx.editor.icons),
@@ -414,11 +414,11 @@ fn diag_picker(
                 align_view(doc, view, Align::Center);
             }
         },
-        move |_editor, PickerDiagnostic { url, diag, .. }| {
-            let location = lsp::Location::new(url.clone(), diag.range);
-            Some(location_to_file_location(&location))
-        },
     )
+    .with_preview(move |_editor, PickerDiagnostic { url, diag, .. }| {
+        let location = lsp::Location::new(url.clone(), diag.range);
+        Some(location_to_file_location(&location))
+    })
     .truncate_start(false)
 }
 
@@ -1129,15 +1129,10 @@ fn goto_impl(
             editor.set_error("No definition found.");
         }
         _locations => {
-            let picker = FilePicker::new(
-                locations,
-                cwdir,
-                None,
-                move |cx, location, action| {
-                    jump_to_location(cx.editor, location, offset_encoding, action)
-                },
-                move |_editor, location| Some(location_to_file_location(location)),
-            );
+            let picker = Picker::new(locations, cwdir, None, move |cx, location, action| {
+                jump_to_location(cx.editor, location, offset_encoding, action)
+            })
+            .with_preview(move |_editor, location| Some(location_to_file_location(location)));
             compositor.push(Box::new(overlaid(picker)));
         }
     }

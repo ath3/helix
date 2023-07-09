@@ -7,8 +7,8 @@ use crate::{
     info::Info,
     input::KeyEvent,
     theme::{self, Theme},
-    view::ViewPosition,
     tree::{self, Dimension, Resize, Tree},
+    view::ViewPosition,
     Align, Document, DocumentId, View, ViewId,
 };
 use dap::StackFrame;
@@ -45,7 +45,7 @@ pub use helix_core::register::Registers;
 use helix_core::{
     auto_pairs::AutoPairs,
     syntax::{self, AutoPairConfig, SoftWrap},
-    Change, Position, Selection,
+    Change, LineEnding, Position, Selection, NATIVE_LINE_ENDING,
 };
 use helix_dap as dap;
 use helix_lsp::lsp;
@@ -296,6 +296,8 @@ pub struct Config {
         deserialize_with = "deserialize_duration_millis"
     )]
     pub idle_timeout: Duration,
+    /// Whether to insert the completion suggestion on hover. Defaults to true.
+    pub preview_completion_insert: bool,
     pub completion_trigger_len: u8,
     /// Whether to instruct the LSP to replace the entire word when applying a completion
     /// or to only insert new text
@@ -316,7 +318,7 @@ pub struct Config {
     pub search: SearchConfig,
     pub lsp: LspConfig,
     pub terminal: Option<TerminalConfig>,
-    /// Column numbers at which to draw the rulers. Default to `[]`, meaning no rulers.
+    /// Column numbers at which to draw the rulers. Defaults to `[]`, meaning no rulers.
     pub rulers: Vec<u16>,
     #[serde(default)]
     pub whitespace: WhitespaceConfig,
@@ -341,6 +343,8 @@ pub struct Config {
     pub icons: IconsConfig,
     /// Draw border around popups.
     pub popup_border: PopupBorderConfig,
+    /// Which line ending to choose for new documents. Defaults to `native`. i.e. `crlf` on Windows, otherwise `lf`.
+    pub default_line_ending: LineEndingConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -485,7 +489,13 @@ impl Default for StatusLineConfig {
                 E::FileModificationIndicator,
             ],
             center: vec![],
-            right: vec![E::Diagnostics, E::Selections, E::Position, E::FileEncoding],
+            right: vec![
+                E::Diagnostics,
+                E::Selections,
+                E::Register,
+                E::Position,
+                E::FileEncoding,
+            ],
             separator: String::from("│"),
             mode: ModeConfig::default(),
             mode_separator: String::from(""),
@@ -570,6 +580,9 @@ pub enum StatusLineElement {
 
     /// Current version control information
     VersionControl,
+
+    /// Indicator for selected register
+    Register,
 }
 
 // Cursor shape is read and used on every rendered frame and so needs
@@ -820,6 +833,50 @@ pub enum PopupBorderConfig {
     Popup,
     Menu,
 }
+/// Line ending configuration.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LineEndingConfig {
+    /// The platform's native line ending.
+    ///
+    /// `crlf` on Windows, otherwise `lf`.
+    Native,
+    /// Line feed.
+    LF,
+    /// Carriage return followed by line feed.
+    Crlf,
+    /// Form feed.
+    #[cfg(feature = "unicode-lines")]
+    FF,
+    /// Carriage return.
+    #[cfg(feature = "unicode-lines")]
+    CR,
+    /// Next line.
+    #[cfg(feature = "unicode-lines")]
+    Nel,
+}
+
+impl Default for LineEndingConfig {
+    fn default() -> Self {
+        LineEndingConfig::Native
+    }
+}
+
+impl From<LineEndingConfig> for LineEnding {
+    fn from(line_ending: LineEndingConfig) -> Self {
+        match line_ending {
+            LineEndingConfig::Native => NATIVE_LINE_ENDING,
+            LineEndingConfig::LF => LineEnding::LF,
+            LineEndingConfig::Crlf => LineEnding::Crlf,
+            #[cfg(feature = "unicode-lines")]
+            LineEndingConfig::FF => LineEnding::FF,
+            #[cfg(feature = "unicode-lines")]
+            LineEndingConfig::CR => LineEnding::CR,
+            #[cfg(feature = "unicode-lines")]
+            LineEndingConfig::Nel => LineEnding::Nel,
+        }
+    }
+}
 
 impl Default for Config {
     fn default() -> Self {
@@ -842,6 +899,7 @@ impl Default for Config {
             auto_format: true,
             auto_save: false,
             idle_timeout: Duration::from_millis(400),
+            preview_completion_insert: true,
             completion_trigger_len: 2,
             auto_info: true,
             file_picker: FilePickerConfig::default(),
@@ -870,6 +928,7 @@ impl Default for Config {
             rainbow_brackets: false,
             icons: IconsConfig::default(),
             popup_border: PopupBorderConfig::None,
+            default_line_ending: LineEndingConfig::default(),
         }
     }
 }

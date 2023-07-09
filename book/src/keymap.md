@@ -25,6 +25,8 @@
 
 ## Normal mode
 
+Normal mode is the default mode when you launch helix. Return to it from other modes by typing `Escape`.
+
 ### Movement
 
 > NOTE: Unlike Vim, `f`, `F`, `t` and `T` are not confined to the current line.
@@ -339,6 +341,8 @@ These mappings are in the style of [vim-unimpaired](https://github.com/tpope/vim
 
 ## Insert mode
 
+Accessed by typing `i` in [normal mode](#normal-mode).
+
 Insert mode bindings are minimal by default. Helix is designed to
 be a modal editor, and this is reflected in the user experience and internal
 mechanics. Changes to the text are only saved for undos when
@@ -391,6 +395,8 @@ end = "no_op"
 ```
 
 ## Select / extend mode
+
+Accessed by typing `v` in [normal mode](#normal-mode).
 
 Select mode echoes Normal mode, but changes any movements to extend
 selections rather than replace them. Goto motions are also changed to

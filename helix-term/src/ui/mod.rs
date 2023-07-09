@@ -1,4 +1,5 @@
 mod completion;
+pub mod copilot_picker;
 mod document;
 pub(crate) mod editor;
 mod explorer;
@@ -15,7 +16,6 @@ mod spinner;
 mod statusline;
 mod text;
 mod tree;
-pub mod copilot_picker;
 
 use crate::compositor::{Component, Compositor};
 use crate::filter_picker_entry;
@@ -26,7 +26,7 @@ pub use explorer::Explorer;
 use helix_view::icons::Icons;
 pub use markdown::Markdown;
 pub use menu::Menu;
-pub use picker::{DynamicPicker, FileLocation, FilePicker, Picker};
+pub use picker::{DynamicPicker, FileLocation, Picker};
 pub use popup::Popup;
 pub use prompt::{Prompt, PromptEvent};
 pub use spinner::{ProgressSpinners, Spinner};
@@ -227,7 +227,7 @@ pub fn file_picker(
 
     log::debug!("file_picker init {:?}", Instant::now().duration_since(now));
 
-    FilePicker::new(
+    Picker::new(
         files,
         root,
         config.icons.picker.then_some(icons),
@@ -241,8 +241,8 @@ pub fn file_picker(
                 cx.editor.set_error(err);
             }
         },
-        |_editor, path| Some((path.clone().into(), None)),
     )
+    .with_preview(|_editor, path| Some((path.clone().into(), None)))
 }
 
 pub mod completers {

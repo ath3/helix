@@ -25,6 +25,7 @@ elm-language-server = { command = "elm-language-server" }
 elvish = { command = "elvish", args = ["-lsp"] }
 erlang-ls = { command = "erlang_ls" }
 forc = { command = "forc", args = ["lsp"] }
+forth-lsp = { command = "forth-lsp" }
 fortls = { command = "fortls", args = ["--lowercase_intrinsics"] }
 gleam = { command = "gleam", args = ["lsp"] }
 haskell-language-server = { command = "haskell-language-server-wrapper", args = ["--lsp"] }
@@ -74,7 +75,7 @@ vlang-language-server = { command = "v", args = ["ls"] }
 vscode-css-language-server = { command = "vscode-css-language-server", args = ["--stdio"], config = { "provideFormatter" = true }}
 vscode-html-language-server = { command = "vscode-html-language-server", args = ["--stdio"], config = { provideFormatter = true } }
 vscode-json-language-server =  { command = "vscode-json-language-server", args = ["--stdio"], config = { provideFormatter = true } }
-vuels = { command = "vls" }
+vuels = { command = "vue-language-server", args = ["--stdio"], config = { typescript = { tsdk = "node_modules/typescript/lib/" } } }
 wgsl_analyzer = { command = "wgsl_analyzer" }
 yaml-language-server = { command = "yaml-language-server", args = ["--stdio"] }
 zls = { command = "zls" }
@@ -460,6 +461,12 @@ name = "attach"
 request = "attach"
 completion = [ "pid" ]
 args = { mode = "local", processId = "{0}" }
+
+[[language.debugger.templates]]
+name = "core"
+request = "launch"
+completion = [ { name = "binary", completion = "filename" }, { name = "core", completion = "filename" } ]
+args = { mode = "core", program = "{0}", coreFilePath = "{1}" }
 
 [[grammar]]
 name = "go"
@@ -916,7 +923,7 @@ name = "vue"
 scope = "source.vue"
 injection-regex = "vue"
 file-types = ["vue"]
-roots = ["package.json", "vue.config.js"]
+roots = ["package.json"]
 indent = { tab-width = 2, unit = "  " }
 language-servers = [ "vuels" ]
 
@@ -1615,7 +1622,7 @@ injection-regex = "sql"
 
 [[grammar]]
 name = "sql"
-source = { git = "https://github.com/DerekStride/tree-sitter-sql", rev = "3a3f92b29c880488a08bc2baaf1aca6432ec3380" }
+source = { git = "https://github.com/DerekStride/tree-sitter-sql", rev = "7cbac0472e5b8f8486ce64ffbcf1982d5cd5fc8d" }
 
 [[language]]
 name = "gdscript"
@@ -2279,7 +2286,7 @@ indent = { tab-width = 2, unit = "  " }
 
 [[grammar]]
 name = "matlab"
-source = { git = "https://github.com/mstanciu552/tree-sitter-matlab", rev = "2d5d3d5193718a86477d4335aba5b34e79147326" }
+source = { git = "https://github.com/acristoffers/tree-sitter-matlab", rev = "b09c27e42732c59321604a15163480ebb4f82f1c" }
 
 [[language]]
 name = "ponylang"
@@ -2601,11 +2608,12 @@ injection-regex = "forth"
 file-types = ["fs", "forth", "fth", "4th"]
 roots = []
 comment-token = "\\"
+language-servers = [ "forth-lsp" ]
 indent = { tab-width = 3, unit = "   " }
 
 [[grammar]]
 name = "forth"
-source = { git = "https://github.com/alexanderbrevig/tree-sitter-forth", rev = "c6fae50a17763af827604627c0fa9e4604aaac0b" }
+source = { git = "https://github.com/alexanderbrevig/tree-sitter-forth", rev = "304ed77beb113e37af38b20ff14e3c37bf350d10" }
 
 [[language]]
 name = "t32"
@@ -2632,3 +2640,12 @@ indent = { tab-width = 2, unit = "  " }
 [[grammar]]
 name = "vale"
 source = { git = "https://github.com/soratenshi/tree-sitter-vale", rev = "6635f56a25a718724c31f51600f2f917e11afd45" }
+
+[[language]]
+name = "webc"
+scope = "text.html.webc"
+injection-regex = "webc"
+file-types = ["webc"]
+roots = []
+indent = { tab-width = 2, unit = "  " }
+grammar = "html"
