@@ -345,6 +345,8 @@ pub struct Config {
     pub popup_border: PopupBorderConfig,
     /// Which line ending to choose for new documents. Defaults to `native`. i.e. `crlf` on Windows, otherwise `lf`.
     pub default_line_ending: LineEndingConfig,
+    /// The amount of timeout passes until a new "save-node" is triggered.
+    pub timeout_passes: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -931,6 +933,7 @@ impl Default for Config {
             icons: IconsConfig::default(),
             popup_border: PopupBorderConfig::None,
             default_line_ending: LineEndingConfig::default(),
+            timeout_passes: 3,
         }
     }
 }
@@ -1913,6 +1916,7 @@ impl Editor {
 
             doc.set_selection(view.id, selection);
             doc.restore_cursor = false;
+            doc.append_changes_to_history(view);
         }
     }
 

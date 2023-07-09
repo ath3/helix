@@ -29,12 +29,7 @@ use crate::{
 };
 
 use log::{debug, error, warn};
-use std::{
-    collections::btree_map::Entry,
-    io::stdin,
-    path::Path,
-    sync::Arc,
-};
+use std::{collections::btree_map::Entry, io::stdin, path::Path, sync::Arc};
 
 #[cfg(not(feature = "integration"))]
 use std::io::stdout;

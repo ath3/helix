@@ -72,6 +72,7 @@ pub struct EditorView {
     spinners: ProgressSpinners,
     sticky_nodes: Option<Vec<StickyNode>>,
     pub(crate) explorer: Option<Explorer>,
+    current_timeout_passes: u8,
 }
 
 #[derive(Debug, Clone)]
@@ -102,6 +103,7 @@ impl EditorView {
             spinners: ProgressSpinners::default(),
             sticky_nodes: None,
             explorer: None,
+            current_timeout_passes: 0,
         }
     }
 
@@ -1217,7 +1219,7 @@ impl EditorView {
                 if (!node.byte_range().contains(&last_scan_byte)
                     || !node.byte_range().contains(&top_first_byte))
                     || node.start_position().row == anchor_line + extended_lines
-                    && node_byte_range.is_none()
+                        && node_byte_range.is_none()
                 {
                     continue;
                 }
@@ -1598,6 +1600,14 @@ impl EditorView {
 
     pub fn handle_idle_timeout(&mut self, cx: &mut commands::Context) -> EventResult {
         commands::compute_inlay_hints_for_all_views(cx.editor, cx.jobs);
+
+        if self.current_timeout_passes == cx.editor.config().timeout_passes {
+            let (view, doc) = current!(cx.editor);
+            doc.append_changes_to_history(view);
+            self.current_timeout_passes = 0;
+        } else {
+            self.current_timeout_passes += 1;
+        }
 
         if let Some(completion) = &mut self.completion {
             return if completion.ensure_item_resolved(cx) {

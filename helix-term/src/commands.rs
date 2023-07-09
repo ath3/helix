@@ -1918,6 +1918,7 @@ fn searcher(cx: &mut Context, direction: Direction) {
     // feed chunks into the regex yet
     let contents = doc.text().slice(..).to_string();
     let completions = search_completions(cx, Some(reg));
+    cx.editor.set_status("");
 
     ui::regex_prompt(
         cx,
