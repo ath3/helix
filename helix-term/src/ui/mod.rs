@@ -168,7 +168,7 @@ pub fn file_picker(
     root: PathBuf,
     config: &helix_view::editor::Config,
     icons: &Icons,
-) -> FilePicker<PathBuf> {
+) -> Picker<PathBuf> {
     use ignore::{types::TypesBuilder, WalkBuilder};
     use std::time::Instant;
 

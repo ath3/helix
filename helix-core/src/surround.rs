@@ -149,8 +149,8 @@ pub fn find_nth_pairs_pos(
             // which side of the char we should be searching on.
             let syntax = syntax.ok_or(Error::CursorOnAmbiguousPair)?;
 
-            let match_pos = find_matching_bracket(syntax, &text.into(), pos)
-                .ok_or(Error::CursorOnAmbiguousPair)?;
+            let match_pos =
+                find_matching_bracket(syntax, text, pos).ok_or(Error::CursorOnAmbiguousPair)?;
             let close_char = text.char(match_pos);
             let search_pos = pos.max(match_pos);
 

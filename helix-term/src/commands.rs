@@ -4841,6 +4841,9 @@ fn move_node_bound_impl(cx: &mut Context, dir: Direction, movement: Movement) {
             editor.clear_idle_timer();
         }
     };
+
+    motion(cx.editor);
+    cx.editor.last_motion = Some(Motion(Box::new(motion)));
 }
 
 fn select_all_impl<F>(editor: &mut Editor, select_fn: F)
