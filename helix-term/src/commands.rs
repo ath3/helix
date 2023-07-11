@@ -29,12 +29,12 @@ use helix_core::{
     tree_sitter::{Node, Tree},
     unicode::width::UnicodeWidthChar,
     visual_offset_from_block, Deletion, LineEnding, Position, Range, Rope, RopeGraphemes,
-    RopeSlice, Selection, SmallVec, Tendril, Transaction,
+    RopeReader, RopeSlice, Selection, SmallVec, Tendril, Transaction,
 };
 use helix_view::{
     clipboard::ClipboardType,
     document::{FormatterError, Mode, SCRATCH_BUFFER_NAME},
-    editor::{Action, CompleteAction, Motion},
+    editor::{Action, CompleteAction},
     icons::Icons,
     info::Info,
     input::KeyEvent,
@@ -1137,8 +1137,7 @@ where
             .transform(|range| move_fn(text, range, count, behavior));
         doc.set_selection(view.id, selection);
     };
-    motion(cx.editor);
-    cx.editor.last_motion = Some(Motion(Box::new(motion)));
+    cx.editor.apply_motion(motion)
 }
 
 fn goto_prev_paragraph(cx: &mut Context) {
@@ -1278,10 +1277,7 @@ fn extend_next_long_word_end(cx: &mut Context) {
     extend_word_impl(cx, movement::move_next_long_word_end)
 }
 
-fn will_find_char<F>(cx: &mut Context, search_fn: F, inclusive: bool, extend: bool)
-where
-    F: Fn(RopeSlice, char, usize, usize, bool) -> Option<usize> + 'static,
-{
+fn find_char(cx: &mut Context, direction: Direction, inclusive: bool, extend: bool) {
     // TODO: count is reset to 1 before next key so we move it into the closure here.
     // Would be nice to carry over.
     let count = cx.count();
@@ -1313,11 +1309,18 @@ where
             } => ch,
             _ => return,
         };
+        let motion = move |editor: &mut Editor| {
+            match direction {
+                Direction::Forward => {
+                    find_char_impl(editor, &find_next_char_impl, inclusive, extend, ch, count)
+                }
+                Direction::Backward => {
+                    find_char_impl(editor, &find_prev_char_impl, inclusive, extend, ch, count)
+                }
+            };
+        };
 
-        find_char_impl(cx.editor, &search_fn, inclusive, extend, ch, count);
-        cx.editor.last_motion = Some(Motion(Box::new(move |editor: &mut Editor| {
-            find_char_impl(editor, &search_fn, inclusive, extend, ch, 1);
-        })));
+        cx.editor.apply_motion(motion);
     })
 }
 
@@ -1396,46 +1399,39 @@ fn find_prev_char_impl(
 }
 
 fn find_till_char(cx: &mut Context) {
-    will_find_char(cx, find_next_char_impl, false, false)
+    find_char(cx, Direction::Forward, false, false);
 }
 
 fn find_next_char(cx: &mut Context) {
-    will_find_char(cx, find_next_char_impl, true, false)
+    find_char(cx, Direction::Forward, true, false)
 }
 
 fn extend_till_char(cx: &mut Context) {
-    will_find_char(cx, find_next_char_impl, false, true)
+    find_char(cx, Direction::Forward, false, true)
 }
 
 fn extend_next_char(cx: &mut Context) {
-    will_find_char(cx, find_next_char_impl, true, true)
+    find_char(cx, Direction::Forward, true, true)
 }
 
 fn till_prev_char(cx: &mut Context) {
-    will_find_char(cx, find_prev_char_impl, false, false)
+    find_char(cx, Direction::Backward, false, false)
 }
 
 fn find_prev_char(cx: &mut Context) {
-    will_find_char(cx, find_prev_char_impl, true, false)
+    find_char(cx, Direction::Backward, true, false)
 }
 
 fn extend_till_prev_char(cx: &mut Context) {
-    will_find_char(cx, find_prev_char_impl, false, true)
+    find_char(cx, Direction::Backward, false, true)
 }
 
 fn extend_prev_char(cx: &mut Context) {
-    will_find_char(cx, find_prev_char_impl, true, true)
+    find_char(cx, Direction::Backward, true, true)
 }
 
 fn repeat_last_motion(cx: &mut Context) {
-    let count = cx.count();
-    let last_motion = cx.editor.last_motion.take();
-    if let Some(m) = &last_motion {
-        for _ in 0..count {
-            m.run(cx.editor);
-        }
-        cx.editor.last_motion = last_motion;
-    }
+    cx.editor.repeat_last_motion(cx.count())
 }
 
 fn replace(cx: &mut Context) {
@@ -2112,10 +2108,15 @@ fn global_search(cx: &mut Context) {
                 .map(|comp| (0.., std::borrow::Cow::Owned(comp.clone())))
                 .collect()
         },
-        move |_editor, regex, event| {
+        move |editor, regex, event| {
             if event != PromptEvent::Validate {
                 return;
             }
+
+            let documents: Vec<_> = editor
+                .documents()
+                .map(|doc| (doc.path(), doc.text()))
+                .collect();
 
             if let Ok(matcher) = RegexMatcherBuilder::new()
                 .case_smart(smart_case)
@@ -2125,8 +2126,12 @@ fn global_search(cx: &mut Context) {
                     .binary_detection(BinaryDetection::quit(b'\x00'))
                     .build();
 
-                let search_root = std::env::current_dir()
-                    .expect("Global search error: Failed to get current dir");
+                let search_root = helix_loader::current_working_dir();
+                if !search_root.exists() {
+                    editor.set_error("Current working directory does not exist");
+                    return;
+                }
+
                 let dedup_symlinks = file_picker_config.deduplicate_links;
                 let absolute_root = search_root
                     .canonicalize()
@@ -2149,6 +2154,7 @@ fn global_search(cx: &mut Context) {
                         let mut searcher = searcher.clone();
                         let matcher = matcher.clone();
                         let all_matches_sx = all_matches_sx.clone();
+                        let documents = &documents;
                         Box::new(move |entry: Result<DirEntry, ignore::Error>| -> WalkState {
                             let entry = match entry {
                                 Ok(entry) => entry,
@@ -2161,17 +2167,36 @@ fn global_search(cx: &mut Context) {
                                 _ => return WalkState::Continue,
                             };
 
-                            let result = searcher.search_path(
-                                &matcher,
-                                entry.path(),
-                                sinks::UTF8(|line_num, _| {
-                                    all_matches_sx
-                                        .send(FileResult::new(entry.path(), line_num as usize - 1))
-                                        .unwrap();
+                            let sink = sinks::UTF8(|line_num, _| {
+                                all_matches_sx
+                                    .send(FileResult::new(entry.path(), line_num as usize - 1))
+                                    .unwrap();
 
-                                    Ok(true)
-                                }),
-                            );
+                                Ok(true)
+                            });
+                            let doc = documents.iter().find(|&(doc_path, _)| {
+                                doc_path.map_or(false, |doc_path| doc_path == entry.path())
+                            });
+
+                            let result = if let Some((_, doc)) = doc {
+                                // there is already a buffer for this file
+                                // search the buffer instead of the file because it's faster
+                                // and captures new edits without requireing a save
+                                if searcher.multi_line_with_matcher(&matcher) {
+                                    // in this case a continous buffer is required
+                                    // convert the rope to a string
+                                    let text = doc.to_string();
+                                    searcher.search_slice(&matcher, text.as_bytes(), sink)
+                                } else {
+                                    searcher.search_reader(
+                                        &matcher,
+                                        RopeReader::new(doc.slice(..)),
+                                        sink,
+                                    )
+                                }
+                            } else {
+                                searcher.search_path(&matcher, entry.path(), sink)
+                            };
 
                             if let Err(err) = result {
                                 log::error!(
@@ -2198,7 +2223,9 @@ fn global_search(cx: &mut Context) {
         let call: job::Callback = Callback::EditorCompositor(Box::new(
             move |editor: &mut Editor, compositor: &mut Compositor| {
                 if all_matches.is_empty() {
-                    editor.set_status("No matches found");
+                    if !editor.is_err() {
+                        editor.set_status("No matches found");
+                    }
                     return;
                 }
 
@@ -2362,10 +2389,25 @@ enum Operation {
     Change,
 }
 
+fn selection_is_linewise(selection: &Selection, text: &Rope) -> bool {
+    selection.ranges().iter().all(|range| {
+        let text = text.slice(..);
+        if range.slice(text).len_lines() < 2 {
+            return false;
+        }
+        // If the start of the selection is at the start of a line and the end at the end of a line.
+        let (start_line, end_line) = range.line_range(text);
+        let start = text.line_to_char(start_line);
+        let end = text.line_to_char((end_line + 1).min(text.len_lines()));
+        start == range.from() && end == range.to()
+    })
+}
+
 fn delete_selection_impl(cx: &mut Context, op: Operation) {
     let (view, doc) = current!(cx.editor);
 
     let selection = doc.selection(view.id);
+    let only_whole_lines = selection_is_linewise(selection, doc.text());
 
     if cx.register != Some('_') {
         // first yank the selection
@@ -2386,7 +2428,11 @@ fn delete_selection_impl(cx: &mut Context, op: Operation) {
             exit_select_mode(cx);
         }
         Operation::Change => {
-            enter_insert_mode(cx);
+            if only_whole_lines {
+                open_above(cx);
+            } else {
+                enter_insert_mode(cx);
+            }
         }
     }
 }
@@ -2585,6 +2631,10 @@ pub fn copilot_picker(cx: &mut Context) {
 
 fn file_picker(cx: &mut Context) {
     let root = find_workspace().0;
+    if !root.exists() {
+        cx.editor.set_error("Workspace directory does not exist");
+        return;
+    }
     let picker = ui::file_picker(root, &cx.editor.config(), &cx.editor.icons);
     cx.push_layer(Box::new(overlaid(picker)));
 }
@@ -2605,8 +2655,14 @@ fn file_picker_in_current_buffer_directory(cx: &mut Context) {
     let picker = ui::file_picker(path, &cx.editor.config(), &cx.editor.icons);
     cx.push_layer(Box::new(overlaid(picker)));
 }
+
 fn file_picker_in_current_directory(cx: &mut Context) {
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("./"));
+    let cwd = helix_loader::current_working_dir();
+    if !cwd.exists() {
+        cx.editor
+            .set_error("Current working directory does not exist");
+        return;
+    }
     let picker = ui::file_picker(cwd, &cx.editor.config(), &cx.editor.icons);
     cx.push_layer(Box::new(overlaid(picker)));
 }
@@ -3408,8 +3464,7 @@ fn goto_next_change_impl(cx: &mut Context, direction: Direction) {
 
         doc.set_selection(view.id, selection)
     };
-    motion(cx.editor);
-    cx.editor.last_motion = Some(Motion(Box::new(motion)));
+    cx.editor.apply_motion(motion);
 }
 
 /// Returns the [Range] for a [Hunk] in the given text.
@@ -4763,8 +4818,7 @@ fn expand_selection(cx: &mut Context) {
             }
         }
     };
-    motion(cx.editor);
-    cx.editor.last_motion = Some(Motion(Box::new(motion)));
+    cx.editor.apply_motion(motion);
 }
 
 fn shrink_selection(cx: &mut Context) {
@@ -4788,8 +4842,7 @@ fn shrink_selection(cx: &mut Context) {
             doc.set_selection(view.id, selection);
         }
     };
-    motion(cx.editor);
-    cx.editor.last_motion = Some(Motion(Box::new(motion)));
+    cx.editor.apply_motion(motion);
 }
 
 fn select_sibling_impl<F>(cx: &mut Context, sibling_fn: &'static F)
@@ -4807,8 +4860,7 @@ where
             doc.set_selection(view.id, selection);
         }
     };
-    motion(cx.editor);
-    cx.editor.last_motion = Some(Motion(Box::new(motion)));
+    cx.editor.apply_motion(motion);
 }
 
 fn select_next_sibling(cx: &mut Context) {
@@ -4844,7 +4896,6 @@ fn move_node_bound_impl(cx: &mut Context, dir: Direction, movement: Movement) {
     };
 
     motion(cx.editor);
-    cx.editor.last_motion = Some(Motion(Box::new(motion)));
 }
 
 fn select_all_impl<F>(editor: &mut Editor, select_fn: F)
@@ -4867,7 +4918,6 @@ fn select_all_siblings(cx: &mut Context) {
     };
 
     motion(cx.editor);
-    cx.editor.last_motion = Some(Motion(Box::new(motion)));
 }
 
 pub fn move_parent_node_end(cx: &mut Context) {
@@ -4899,7 +4949,6 @@ fn select_all_children_in_selection(cx: &mut Context) {
     };
 
     motion(cx.editor);
-    cx.editor.last_motion = Some(Motion(Box::new(motion)));
 }
 
 fn select_all_children(cx: &mut Context) {
@@ -4908,7 +4957,6 @@ fn select_all_children(cx: &mut Context) {
     };
 
     motion(cx.editor);
-    cx.editor.last_motion = Some(Motion(Box::new(motion)));
 }
 
 fn match_brackets(cx: &mut Context) {
@@ -5183,8 +5231,7 @@ fn goto_ts_object_impl(cx: &mut Context, object: &'static str, direction: Direct
             editor.set_status("Syntax-tree is not available in current buffer");
         }
     };
-    motion(cx.editor);
-    cx.editor.last_motion = Some(Motion(Box::new(motion)));
+    cx.editor.apply_motion(motion);
 }
 
 fn goto_next_function(cx: &mut Context) {
@@ -5314,8 +5361,7 @@ fn select_textobject(cx: &mut Context, objtype: textobject::TextObject) {
                 });
                 doc.set_selection(view.id, selection);
             };
-            textobject(cx.editor);
-            cx.editor.last_motion = Some(Motion(Box::new(textobject)));
+            cx.editor.apply_motion(textobject);
         }
     });
 
