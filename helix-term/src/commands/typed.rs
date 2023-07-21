@@ -1307,7 +1307,14 @@ fn reload(
     doc.reload(view, &cx.editor.diff_providers, redraw_handle)
         .map(|_| {
             view.ensure_cursor_in_view(doc, scrolloff);
-        })
+        })?;
+    if let Some(path) = doc.path() {
+        cx.editor
+            .language_servers
+            .file_event_handler
+            .file_changed(path.clone());
+    }
+    Ok(())
 }
 
 fn reload_all(
@@ -1348,6 +1355,12 @@ fn reload_all(
 
         let redraw_handle = cx.editor.redraw_handle.clone();
         doc.reload(view, &cx.editor.diff_providers, redraw_handle)?;
+        if let Some(path) = doc.path() {
+            cx.editor
+                .language_servers
+                .file_event_handler
+                .file_changed(path.clone());
+        }
 
         for view_id in view_ids {
             let view = view_mut!(cx.editor, view_id);
