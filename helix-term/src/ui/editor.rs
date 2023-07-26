@@ -1220,7 +1220,7 @@ impl EditorView {
             for node in matched_node.nodes_for_capture_index(start_index) {
                 if (!node.byte_range().contains(&last_scan_byte)
                     || !node.byte_range().contains(&top_first_byte))
-                    || node.start_position().row == anchor_line + extended_lines
+                    || node.start_position().row == anchor_line + context.len()
                         && node_byte_range.is_none()
                 {
                     continue;
