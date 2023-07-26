@@ -2,11 +2,11 @@
 	body: (_) @context.end
 ) @context
 
-(function
-  body: (_) @context.end
+(function_declaration
+	body: (_) @context.end
 ) @context
 
-(function_declaration
+(function
 	body: (_) @context.end
 ) @context
 
@@ -22,7 +22,7 @@
 	(class_declaration)
   (else_clause)
   (for_statement)
-  (lexical_declaration)
+  ; (interface_declaration) ; not usable in javascript
   (lexical_declaration)
   (method_definition)
   (object)
