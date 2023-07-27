@@ -30,7 +30,7 @@ use helix_view::{
     keyboard::{KeyCode, KeyModifiers},
     Document, Editor, Theme, View,
 };
-use std::{collections::HashSet, mem::take, num::NonZeroUsize, path::PathBuf, rc::Rc, sync::Arc};
+use std::{collections::BTreeSet, mem::take, num::NonZeroUsize, path::PathBuf, rc::Rc, sync::Arc};
 
 use tui::{buffer::Buffer as Surface, text::Span};
 
@@ -54,6 +54,18 @@ impl PartialEq for StickyNode {
 }
 
 impl Eq for StickyNode {}
+
+impl PartialOrd for StickyNode {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.line.cmp(&other.line))
+    }
+}
+
+impl Ord for StickyNode {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.line.cmp(&other.line)
+    }
+}
 
 impl std::hash::Hash for StickyNode {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -1003,7 +1015,8 @@ impl EditorView {
             .unwrap_or(start_index);
 
         // context is list of numbers of lines that should be rendered in the LSP context
-        let mut context: HashSet<StickyNode> = HashSet::new();
+        // let mut context: HashSet<StickyNode> = HashSet::new();
+        let mut context: BTreeSet<StickyNode> = BTreeSet::new();
 
         let mut cursor = QueryCursor::new();
 
@@ -1058,10 +1071,7 @@ impl EditorView {
             max_lines.min(viewport.height) as usize
         };
 
-        let mut result: Vec<StickyNode> = context.into_iter().collect();
-        result.sort_by(|lnode, rnode| lnode.line.cmp(&rnode.line));
-
-        result = result
+        let mut result: Vec<StickyNode> = context
             .iter()
             // only take the nodes until 1 / 3 of the viewport is reached or the maximum amount of sticky nodes
             .take(max_nodes_amount)
