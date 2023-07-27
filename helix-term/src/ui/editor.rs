@@ -31,7 +31,7 @@ use helix_view::{
     keyboard::{KeyCode, KeyModifiers},
     Document, Editor, Theme, View,
 };
-use std::{collections::BTreeSet, mem::take, num::NonZeroUsize, path::PathBuf, rc::Rc, sync::Arc};
+use std::{mem::take, num::NonZeroUsize, path::PathBuf, rc::Rc, sync::Arc};
 
 use tui::{buffer::Buffer as Surface, text::Span};
 
@@ -46,32 +46,6 @@ pub struct StickyNode {
     indicator: Option<String>,
     anchor: usize,
     has_context_end: bool,
-}
-
-impl PartialEq for StickyNode {
-    fn eq(&self, other: &Self) -> bool {
-        self.line == other.line
-    }
-}
-
-impl Eq for StickyNode {}
-
-impl PartialOrd for StickyNode {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.line.cmp(&other.line))
-    }
-}
-
-impl Ord for StickyNode {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.line.cmp(&other.line)
-    }
-}
-
-impl std::hash::Hash for StickyNode {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.line.hash(state);
-    }
 }
 
 pub struct EditorView {
@@ -1210,8 +1184,7 @@ impl EditorView {
             .unwrap_or(start_index);
 
         // context is list of numbers of lines that should be rendered in the LSP context
-        // let mut context: HashSet<StickyNode> = HashSet::new();
-        let mut context: BTreeSet<StickyNode> = BTreeSet::new();
+        let mut result: Vec<StickyNode> = Vec::new();
 
         let mut cursor = QueryCursor::new();
 
@@ -1233,13 +1206,13 @@ impl EditorView {
             for node in matched_node.nodes_for_capture_index(start_index) {
                 if (!node.byte_range().contains(&last_scan_byte)
                     || !node.byte_range().contains(&top_first_byte))
-                    || node.start_position().row == anchor_line + context.len()
-                        && node_byte_range.is_none()
+                    && node.start_position().row != anchor_line + result.len()
+                    && node_byte_range.is_none()
                 {
                     continue;
                 }
 
-                context.insert(StickyNode {
+                result.push(StickyNode {
                     line: node.start_position().row,
                     visual_line: 0,
                     byte_range: node_byte_range
@@ -1253,9 +1226,11 @@ impl EditorView {
             }
         }
         // context should be filled by now
-        if context.is_empty() {
+        if result.is_empty() {
             return None;
         }
+
+        result.sort_unstable_by(|lhs, rhs| lhs.line.cmp(&rhs.line));
 
         // always cap the maximum amount of sticky contextes to 1/3 of the viewport
         // unless configured otherwise
@@ -1266,7 +1241,7 @@ impl EditorView {
             max_lines.min(viewport.height) as usize
         };
 
-        let mut result: Vec<StickyNode> = context
+        result = result
             .iter()
             // only take the nodes until 1 / 3 of the viewport is reached or the maximum amount of sticky nodes
             .take(max_nodes_amount)
