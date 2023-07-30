@@ -349,7 +349,7 @@ pub struct Config {
     pub timeout_passes: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct StickyContextConfig {
     /// Display context of current top view if it is outside the view. Default to off
@@ -357,6 +357,7 @@ pub struct StickyContextConfig {
 
     /// Display an indicator whether to indicate if the sticky context is active
     /// Eventually making this a string so that it is configurable.
+    /// Default to off
     pub indicator: bool,
 
     /// The max amount of lines to be displayed. (including indicator!)
@@ -364,12 +365,18 @@ pub struct StickyContextConfig {
     /// So if the configured amount is more than the viewport height, it will be capped to a max
     /// of the complete viewport height.
     ///
-    /// Default: 0, which means that it is a fixed size based on the viewport
-    pub max_lines: u16,
+    /// Default: 10, which means that it is a fixed size based on the viewport
+    pub max_lines: u8,
 
     /// Whether or not the Sticky context shall also depend on the cursor position
     /// Default to off
     pub follow_cursor: bool,
+}
+
+impl Default for StickyContextConfig {
+    fn default() -> Self {
+        StickyContextConfig { enable: false, indicator: false, max_lines: 10, follow_cursor: false }
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
