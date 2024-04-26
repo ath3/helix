@@ -154,7 +154,7 @@ impl<T: Component> Popup<T> {
         // if we're on the bottom part, do above
         let can_put_below = viewport.height > rel_y + MIN_HEIGHT;
         let can_put_above = rel_y.checked_sub(MIN_HEIGHT).is_some();
-        let final_pos = match self.position_bias {
+        let mut final_pos = match self.position_bias {
             Open::Below => match can_put_below {
                 true => Open::Below,
                 false => Open::Above,
@@ -184,8 +184,14 @@ impl<T: Component> Popup<T> {
             .required_size((max_width, max_height))
             .expect("Component needs required_size implemented in order to be embedded in a popup");
 
+        if max_height < child_height
+            && final_pos == Open::Below
+            && rel_y > max_height + 2 * u16::from(render_borders)
+        {
+            final_pos = Open::Above;
+        }
         width = width.min(MAX_WIDTH);
-        let height = if render_borders {
+        let height = if render_borders && is_menu {
             (child_height + 2).min(MAX_HEIGHT)
         } else {
             child_height.min(MAX_HEIGHT)
@@ -331,7 +337,9 @@ impl<T: Component> Component for Popup<T> {
 
         let mut inner = area;
         if render_borders {
-            inner = area.inner(&Margin::all(1));
+            if is_menu {
+                inner = area.inner(&Margin::all(1));
+            }
             Widget::render(Block::default().borders(Borders::ALL), area, surface);
         }
         let border = usize::from(render_borders);
